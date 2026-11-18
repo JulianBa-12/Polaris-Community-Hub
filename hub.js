@@ -391,7 +391,7 @@ P.item = async (root, [, rawId]) => {
     e.rating ? ['Bewertung', '★ ' + e.rating + ' (' + e.ratingCount + ')'] : null, e.favorites ? ['Favoriten', String(e.favorites)] : null].filter(Boolean);
   const actions = h('div.cta');
   if (d.payload && typeof d.payload === 'object') actions.append(h('button.btn', { onclick: () => download(slugify(e.title) + '.polaris.json', JSON.stringify({ polaris: 1, kind: e.kind, type: d.type, title: e.title, payload: d.payload }, null, 2)) }, 'Als Datei herunterladen'));
-  if (e.kind === 'plugin' && d.code) actions.append(h('button.btn', { onclick: () => download(slugify(e.title) + '.plugin.json', JSON.stringify({ name: e.title, version: d.version, description: d.description, permissions: d.permissions || [], polaris: d.polaris, code: d.code }, null, 2)) }, 'Plugin herunterladen'));
+  if (e.kind === 'plugin' && d.code) actions.append(h('button.btn', { onclick: () => download(slugify(e.title) + '.plugin.json', JSON.stringify({ manifest: { id: slugify(e.title).slice(0, 36) + '-' + String(e.id).slice(-4).toLowerCase().replace(/[^a-z0-9]/g, ''), name: e.title, version: d.version || '1.0.0', author: d.author || (e.author && e.author.username) || 'unbekannt', description: d.description || '', permissions: d.permissions || [], hosts: d.hosts || [] }, code: d.code }, null, 2)) }, 'Plugin herunterladen'));
   if (safeUrl(d.url)) actions.append(h('a.btn', { href: d.url, target: '_blank', rel: 'noopener noreferrer' }, 'Datei öffnen'));
   root.append(h(visual ? 'div.det' : 'div',
     h('div', h('h1', e.title), visual ? thumb(e) : null, h('div', { style: { marginTop: visual ? '18px' : '0' } }, mdEl(d.description || d.body || '')),
