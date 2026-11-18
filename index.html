@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data:; connect-src 'self' https:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Polaris Community Hub</title>
+<meta name="description" content="Community Hub für Polaris, den Client für Kirka.io: News, Changelog, Skins, Ressourcen, Plugins, Dokumentation und Support.">
+<link rel="icon" href="assets/favicon.png">
+<link rel="stylesheet" href="hub.css">
+<script type="module" src="hub.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Zum Inhalt springen</a>
+<header class="hd">
+  <div class="wrap hdi">
+    <a class="brand" href="#/" aria-label="Polaris Community Hub – Startseite"><img src="assets/favicon.png" alt="" width="20" height="20"><span class="bn">Polaris</span><span class="bs">Community Hub</span></a>
+    <button class="menu" id="menu" aria-expanded="false" aria-controls="nav">Menü</button>
+    <nav id="nav" class="nav" aria-label="Hauptnavigation"></nav>
+    <div class="acct" id="acct"></div>
+  </div>
+</header>
+<div id="notice"></div>
+<main id="main" class="wrap" tabindex="-1"><p class="muted">Lädt …</p></main>
+<footer class="ft"><div class="wrap fti" id="foot"></div></footer>
+<noscript><p class="wrap">Der Community Hub benötigt JavaScript.</p></noscript>
+</body>
+</html>
