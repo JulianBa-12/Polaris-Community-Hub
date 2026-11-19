@@ -122,7 +122,7 @@ function setSession(token, user) {
 const NAV = [
   { id: 'home', l: 'Home', href: '#/' },
   { g: 'Polaris', items: [['about', 'About Polaris'], ['features', 'Features'], ['news', 'News'], ['changelog', 'Changelog'], ['downloads', 'Downloads']] },
-  { g: 'Community', items: [['community', 'Community'], ['skins', 'Skin Gallery'], ['resources', 'Resource Gallery'], ['plugins', 'Plugin Gallery']] },
+  { g: 'Community', items: [['community', 'Community'], ['skins', 'Skin Gallery'], ['themes', 'Themes'], ['crosshairs', 'Crosshairs'], ['resources', 'Resource Gallery'], ['plugins', 'Plugin Gallery'], ['leaderboard', 'Leaderboard'], ['submit', 'Inhalt einreichen']] },
   { g: 'Hilfe', items: [['docs', 'Documentation'], ['guides', 'Guides'], ['support', 'Support'], ['bugs', 'Bug Reports'], ['suggestions', 'Suggestions'], ['contact', 'Contact']] }
 ];
 function renderNav(route) {
@@ -142,7 +142,7 @@ function renderNav(route) {
 function renderAcct() {
   const el = document.getElementById('acct'); if (!el) return;
   if (!S.live) { el.replaceChildren(); return; }
-  if (S.user) el.replaceChildren(h('span.sm.muted', S.user.displayName || S.user.username), h('button.btn.sm.ghost', { onclick: logout }, 'Abmelden'));
+  if (S.user) el.replaceChildren(isStaff() ? h('a.btn.sm.ghost', { href: '#/mod' }, 'Moderation') : null, h('a.sm', { href: '#/account', title: 'Mein Konto' }, S.user.displayName || S.user.username), h('button.btn.sm.ghost', { onclick: logout }, 'Abmelden'));
   else el.replaceChildren(h('button.btn.sm', { onclick: () => loginDialog() }, 'Anmelden'));
 }
 async function logout() { try { await api('/auth/logout', { method: 'POST' }); } catch { /* session may already be gone */ } setSession(null); route(); }
@@ -177,13 +177,14 @@ function thumb(e) {
   const d = e.data || {}; const u = imgUrl(d.preview || d.image || d.thumbnail);
   if (u) return h('div.th', h('img', { src: u, alt: '', loading: 'lazy' }));
   if (d.type === 'crosshair' && d.payload && typeof d.payload === 'object') return h('div.th', h('div.xh', { html: crosshairSvg(d.payload) }));
+  if (d.type === 'theme' && d.payload && d.payload.colors && typeof d.payload.colors === 'object') return h('div.th', themeSwatch(d.payload.colors));
   return h('div.th', h('span.ph-t', d.type || e.kind));
 }
 function card(e) {
   const d = e.data || {};
   return h('a.card', { href: '#/item/' + encodeURIComponent(e.id) }, thumb(e), h('div.cb', h('div.ct', e.title), d.description || d.body ? h('div.cd', String(d.description || d.body).replace(/[#*`>-]/g, '').slice(0, 220)) : null,
     h('div.cm', d.type ? h('span.tag', d.type) : null, e.featured ? h('span.tag.acc', 'empfohlen') : null, e.kind === 'plugin' && d.version ? h('span', 'v' + d.version) : null,
-      e.rating ? h('span', '★ ' + e.rating + ' (' + e.ratingCount + ')') : null, e.favorites ? h('span', '♥ ' + e.favorites) : null, e.author ? h('span', e.author.displayName || e.author.username) : null)));
+      e.rating ? h('span', '★ ' + e.rating + ' (' + e.ratingCount + ')') : null, e.favorites ? h('span', '♥ ' + e.favorites) : null, e.downloads ? h('span', '↓ ' + e.downloads) : null, e.author ? h('span', e.author.displayName || e.author.username) : null)));
 }
 function gallery(root, items, { types, emptyText }) {
   let q = ''; let type = '';
@@ -381,16 +382,16 @@ P.item = async (root, [, rawId]) => {
   if (!e && !S.live) return notFound(root);
   if (S.live) { try { e = await api('/entities/' + encodeURIComponent(id)); } catch (err) { if (!e) { root.append(h('p.err', err.message)); return; } } }
   const d = e.data || {};
-  const back = { news: ['#/news', 'News'], announcement: ['#/news', 'News'], changelog: ['#/changelog', 'Changelog'], plugin: ['#/plugins', 'Plugin Gallery'], resource: ['#/resources', 'Resource Gallery'], theme: ['#/resources', 'Resource Gallery'], bug: ['#/bugs', 'Bug Reports'], suggestion: ['#/suggestions', 'Suggestions'], docs: ['#/docs', 'Documentation'], guide: ['#/guides', 'Guides'], tutorial: ['#/guides', 'Guides'], help: ['#/support', 'Support'] }[e.kind] || ['#/skins', 'Skin Gallery'];
+  const back = { news: ['#/news', 'News'], announcement: ['#/news', 'News'], changelog: ['#/changelog', 'Changelog'], plugin: ['#/plugins', 'Plugin Gallery'], resource: ['#/resources', 'Resource Gallery'], theme: ['#/themes', 'Themes'], bug: ['#/bugs', 'Bug Reports'], suggestion: ['#/suggestions', 'Suggestions'], docs: ['#/docs', 'Documentation'], guide: ['#/guides', 'Guides'], tutorial: ['#/guides', 'Guides'], help: ['#/support', 'Support'] }[e.kind] || ['#/skins', 'Skin Gallery'];
   document.title = e.title + ' – ' + title();
   root.append(h('a.crumb', { href: back[0] }, '← ' + back[1]));
   const visual = ['gallery', 'resource', 'theme', 'plugin', 'marketplace'].includes(e.kind);
   const meta = [['Typ', d.type || e.kind], e.author ? ['Von', e.author.displayName || e.author.username] : null, ['Veröffentlicht', fmtDate(e.createdAt)], e.updatedAt && e.updatedAt !== e.createdAt ? ['Aktualisiert', fmtDate(e.updatedAt)] : null,
     d.version ? ['Version', d.version] : null, d.license ? ['Lizenz', d.license] : null, d.polaris ? ['Benötigt', 'Polaris ' + d.polaris] : null, Array.isArray(d.permissions) ? ['Berechtigungen', d.permissions.length ? d.permissions.join(', ') : 'keine'] : null,
     d.sha256 ? ['SHA-256', h('span.mono', d.sha256)] : null, Array.isArray(d.tags) && d.tags.length ? ['Tags', d.tags.join(', ')] : null, ['bug', 'suggestion'].includes(e.kind) ? ['Status', statusTag(e.status)] : null,
-    e.rating ? ['Bewertung', '★ ' + e.rating + ' (' + e.ratingCount + ')'] : null, e.favorites ? ['Favoriten', String(e.favorites)] : null].filter(Boolean);
+    e.rating ? ['Bewertung', '★ ' + e.rating + ' (' + e.ratingCount + ')'] : null, e.favorites ? ['Favoriten', String(e.favorites)] : null, e.downloads ? ['Downloads', String(e.downloads)] : null].filter(Boolean);
   const actions = h('div.cta');
-  if (d.payload && typeof d.payload === 'object') actions.append(h('button.btn', { onclick: () => download(slugify(e.title) + '.polaris.json', JSON.stringify({ polaris: 1, kind: e.kind, type: d.type, title: e.title, payload: d.payload }, null, 2)) }, 'Als Datei herunterladen'));
+  if (d.payload && typeof d.payload === 'object') actions.append(h('button.btn', { onclick: () => recordDownload(e) && download(slugify(e.title) + '.polaris.json', JSON.stringify({ polaris: 1, kind: e.kind, type: d.type, title: e.title, payload: d.payload }, null, 2)) }, 'Als Datei herunterladen'));
   if (e.kind === 'plugin' && d.code) actions.append(h('button.btn', { onclick: () => download(slugify(e.title) + '.plugin.json', JSON.stringify({ manifest: { id: slugify(e.title).slice(0, 36) + '-' + String(e.id).slice(-4).toLowerCase().replace(/[^a-z0-9]/g, ''), name: e.title, version: d.version || '1.0.0', author: d.author || (e.author && e.author.username) || 'unbekannt', description: d.description || '', permissions: d.permissions || [], hosts: d.hosts || [] }, code: d.code }, null, 2)) }, 'Plugin herunterladen'));
   if (safeUrl(d.url)) actions.append(h('a.btn', { href: d.url, target: '_blank', rel: 'noopener noreferrer' }, 'Datei öffnen'));
   root.append(h(visual ? 'div.det' : 'div',
@@ -441,6 +442,261 @@ function loginDialog() {
   draw(); document.body.append(ov); document.addEventListener('keydown', onKey);
 }
 
+// ---------- themes, crosshairs, leaderboard ----------
+function themeSwatch(c) {
+  const keys = ['bg', 'panel', 'panel2', 'accent', 'text', 'ok', 'warn', 'danger'].filter((k) => isHex(c[k]));
+  return h('div.sw', { style: { background: isHex(c.bg) ? c.bg : '#111316' } }, keys.map((k) => h('span', { title: k + ' ' + c[k], style: { background: c[k] } })));
+}
+const galleryOfType = (t) => ents('gallery').filter((e) => e.data.type === t);
+P.themes = (root) => {
+  root.append(pageHead('Themes', 'Farbschemata für den Polaris Client. Herunterladen und im Client unter Creator Gallery → Importieren übernehmen.'));
+  const items = galleryOfType('theme').concat(ents('theme').map((e) => Object.assign({}, e, { data: Object.assign({ type: 'theme' }, e.data) })));
+  gallery(root, items, { types: [], emptyText: 'Noch keine Themes veröffentlicht.' });
+};
+P.crosshairs = (root) => {
+  root.append(pageHead('Crosshairs', 'Fadenkreuze der Community mit Live-Vorschau. Polaris zeigt sie als Overlay – das Spiel selbst wird dabei nicht verändert.'));
+  const items = galleryOfType('crosshair');
+  const shapes = [...new Set(items.map((e) => e.data.payload && e.data.payload.shape).filter(Boolean))];
+  let shape = '';
+  const holder = h('div');
+  const draw = () => { holder.replaceChildren(); gallery(holder, shape ? items.filter((e) => e.data.payload && e.data.payload.shape === shape) : items, { types: [], emptyText: 'Noch keine Fadenkreuze veröffentlicht.' }); };
+  if (shapes.length > 1) {
+    const sel = h('select.inp', { 'aria-label': 'Form', style: { width: 'auto' }, onchange: (ev) => { shape = ev.target.value; draw(); } }, h('option', { value: '' }, 'Alle Formen'), shapes.map((x) => h('option', { value: x }, x)));
+    root.append(h('div.bar', h('span.sm.muted', 'Form'), sel));
+  }
+  root.append(holder); draw();
+};
+P.leaderboard = async (root) => {
+  root.append(pageHead('Leaderboard', 'Ranglisten der Polaris-Community: aktivste Creator und beliebteste Inhalte. Kirka.io-Spielstatistiken sind nicht enthalten, weil Kirka.io dafür keine öffentliche Schnittstelle anbietet.'));
+  if (!S.live) {
+    const items = ents('gallery').concat(ents('resource'), ents('theme'), ents('plugin')).filter((e) => e.favorites || e.rating || e.downloads)
+      .sort((a, b) => (b.downloads || 0) - (a.downloads || 0) || (b.favorites || 0) - (a.favorites || 0) || (b.rating || 0) - (a.rating || 0)).slice(0, 25);
+    root.append(h('div.box.hint', { style: { marginBottom: '16px' } }, 'Live-Ranglisten erscheinen, sobald der Hub mit einem öffentlichen Polaris-Backend verbunden ist. Angezeigt wird der veröffentlichte Stand.'));
+    root.append(items.length ? lbContent(items) : empty('Noch keine Bewertungen oder Downloads.'));
+    return;
+  }
+  let period = '30d';
+  const out = h('div');
+  const chips = h('div.chips', [['7d', '7 Tage'], ['30d', '30 Tage'], ['all', 'Gesamt']].map(([v, l]) => h('button', { class: v === period ? 'on' : null, 'aria-pressed': String(v === period), onclick: (ev) => { period = v; chips.querySelectorAll('button').forEach((b) => { b.classList.remove('on'); b.setAttribute('aria-pressed', 'false'); }); ev.currentTarget.classList.add('on'); ev.currentTarget.setAttribute('aria-pressed', 'true'); load(); } }, l)));
+  root.append(h('div.bar', chips), out);
+  async function load() {
+    out.replaceChildren(h('p.muted', 'Lädt …'));
+    try {
+      const lb = await api('/leaderboard?period=' + period, { auth: false });
+      out.replaceChildren(
+        h('div.facts.row3', h('div', h('span.muted', 'Aktive Konten'), h('b', String(lb.totals.users))), h('div', h('span.muted', 'Veröffentlichte Inhalte'), h('b', String(lb.totals.items))), h('div', h('span.muted', 'Downloads im Zeitraum'), h('b', String(lb.totals.downloads)))),
+        h('div.cols2', { style: { marginTop: '22px' } },
+          h('section', h('h2', 'Top Creator'), lb.creators.length ? h('table.tbl', h('thead', h('tr', h('th', '#'), h('th', 'Creator'), h('th', 'Inhalte'), h('th', 'Downloads'), h('th', 'Favoriten'), h('th', 'Punkte'))),
+            h('tbody', lb.creators.map((r) => h('tr', h('td', String(r.rank)), h('td', h('a', { href: '#/u/' + encodeURIComponent(r.user.username) }, r.user.displayName)), h('td', String(r.items)), h('td', String(r.downloads)), h('td', String(r.favorites)), h('td', h('b', String(r.score))))))) : empty('Noch keine Creator im Zeitraum.'),
+            h('p.sm.muted', 'Punkte = 5 je Inhalt + 1 je Download + 3 je Favorit + 2 × Durchschnittsbewertung. Private Profile werden nicht gelistet.')),
+          h('section', h('h2', 'Beliebteste Inhalte'), lb.content.length ? lbContent(lb.content) : empty('Noch keine Inhalte.'))));
+    } catch (e) { out.replaceChildren(h('p.err', e.message)); }
+  }
+  load();
+};
+function lbContent(items) {
+  return h('div.list', items.map((e, i) => h('a.li', { href: '#/item/' + encodeURIComponent(e.id) }, h('span.rk', String(e.rank || i + 1)), h('div', h('div.lt', e.title), h('div.ld', [e.data.type || e.kind, e.author ? (e.author.displayName || e.author.username) : null].filter(Boolean).join(' · '))),
+    h('span.lm', [e.periodDownloads != null ? '↓ ' + e.periodDownloads : e.downloads ? '↓ ' + e.downloads : null, e.favorites ? '♥ ' + e.favorites : null, e.rating ? '★ ' + e.rating : null].filter(Boolean).join('  ')))));
+}
+P.u = async (root, parts) => {
+  const name = decodeURIComponent(parts[1] || '');
+  if (!S.live) { root.append(pageHead('Profil', 'Profile sind verfügbar, sobald der Hub mit einem Live-Backend verbunden ist.')); return; }
+  try {
+    const u = await api('/users/' + encodeURIComponent(name));
+    if (u.restricted) { root.append(pageHead(u.displayName || u.username, 'Dieses Profil ist nicht öffentlich.')); return; }
+    root.append(pageHead(u.displayName || u.username, '@' + u.username + (u.role && u.role !== 'user' ? ' · ' + u.role : '') + ' · dabei seit ' + fmtDate(u.createdAt)));
+    if (u.bio) root.append(mdEl(u.bio));
+    const theirs = (u.submissions || []).filter((e) => ['gallery', 'resource', 'theme', 'plugin'].includes(e.kind));
+    root.append(h('section.sec', { style: { marginTop: '22px' } }, h('h2', 'Inhalte (' + theirs.length + ')'), theirs.length ? h('div.grid', theirs.map(card)) : empty('Noch keine veröffentlichten Inhalte.')));
+  } catch (e) { root.append(pageHead('Profil'), h('p.err', e.message)); }
+};
+
+// ---------- downloads ----------
+function recordDownload(e) {
+  if (S.live) api('/entities/' + encodeURIComponent(e.id) + '/download', { method: 'POST', body: { source: 'hub' } }).catch(() => { /* counting is best effort, the file is local */ });
+  return true;
+}
+
+// ---------- account ----------
+const isStaff = () => !!(S.user && ['moderator', 'admin'].includes(S.user.role));
+function needLogin(root, what) {
+  if (!S.live) { root.append(h('div.box.hint', what + ' ist verfügbar, sobald der Hub mit einem öffentlichen Polaris-Backend verbunden ist.')); return true; }
+  if (!S.user) { root.append(h('div.box', h('p', 'Bitte melde dich an, um fortzufahren.'), h('button.btn.pri', { onclick: () => loginDialog() }, 'Anmelden oder registrieren'))); return true; }
+  return false;
+}
+function tabs(root, list, cur, base) {
+  root.append(h('div.tabs', { role: 'tablist' }, list.map(([id, l]) => h('a', { href: base + id, role: 'tab', 'aria-selected': String(id === cur), class: id === cur ? 'on' : null }, l))));
+}
+const STATUS_DE = { pending: ['in Prüfung', 'warn'], published: ['veröffentlicht', 'ok'], rejected: ['abgelehnt', 'bad'], removed: ['entfernt', 'bad'], open: ['offen', 'warn'], planned: ['geplant', 'acc'], done: ['erledigt', 'ok'] };
+const stTag = (s) => { const m = STATUS_DE[s] || [s, '']; return h('span.tag' + (m[1] ? '.' + m[1] : ''), m[0]); };
+P.account = async (root, parts) => {
+  root.append(pageHead('Mein Konto', 'Profil, eigene Inhalte, Favoriten, Download-Verlauf und Sicherheit. Dasselbe Konto gilt im Polaris Client.'));
+  if (needLogin(root, 'Das Konto')) return;
+  const tab = parts[1] || 'profile';
+  tabs(root, [['profile', 'Profil'], ['uploads', 'Meine Inhalte'], ['favorites', 'Favoriten'], ['downloads', 'Downloads'], ['security', 'Sicherheit']], tab, '#/account/');
+  const box = h('div', { style: { marginTop: '18px' } }); root.append(box);
+  try {
+    if (tab === 'profile') {
+      const me = await api('/me'); const f = { displayName: me.displayName || '', bio: me.bio || '', profile: (me.privacy || {}).profile || 'public' };
+      const msg = h('div');
+      box.append(h('form.box.narrow', { onsubmit: async (ev) => { ev.preventDefault(); msg.replaceChildren(); try { const r = await api('/me', { method: 'PUT', body: { displayName: f.displayName.trim(), bio: f.bio, privacy: { profile: f.profile } } }); S.user = Object.assign(S.user, r); renderAcct(); msg.replaceChildren(h('p.okm', 'Gespeichert.')); } catch (e) { msg.replaceChildren(h('p.err', e.message)); } } },
+        h('label.fld', h('span', 'Benutzername'), h('input.inp', { value: me.username, disabled: true })),
+        h('label.fld', h('span', 'Anzeigename'), h('input.inp', { value: f.displayName, maxlength: 40, required: true, oninput: (e) => { f.displayName = e.target.value; } })),
+        h('label.fld', h('span', 'Über mich'), h('textarea.inp', { rows: 4, maxlength: 500, oninput: (e) => { f.bio = e.target.value; } }, f.bio)),
+        h('label.fld', h('span', 'Profil-Sichtbarkeit'), h('select.inp', { onchange: (e) => { f.profile = e.target.value; } }, [['public', 'Öffentlich (auch im Leaderboard)'], ['friends', 'Nur Freunde'], ['private', 'Privat']].map(([v, l]) => h('option', { value: v, selected: v === f.profile ? true : null }, l)))),
+        msg, h('button.btn.pri', { type: 'submit' }, 'Speichern'), h('a.btn.ghost', { href: '#/u/' + encodeURIComponent(me.username), style: { marginLeft: '8px' } }, 'Öffentliches Profil ansehen')));
+    }
+    if (tab === 'uploads') {
+      const mine = (await api('/me/entities')).filter((e) => e.kind !== 'comment');
+      box.append(h('div.bar', h('a.btn.pri.sm', { href: '#/submit' }, '+ Neuen Inhalt einreichen')));
+      box.append(mine.length ? h('div.list', mine.map((e) => h('div.li', h('div', h('div.lt', e.status === 'published' ? h('a', { href: '#/item/' + encodeURIComponent(e.id) }, e.title) : e.title), h('div.ld', (e.data.type || e.kind) + ' · ' + fmtDate(e.createdAt) + (e.downloads ? ' · ↓ ' + e.downloads : ''))), h('span.lm', stTag(e.status),
+        h('button.btn.sm.ghost', { style: { marginLeft: '8px' }, onclick: async (ev) => { if (!confirm('„' + e.title + '“ wirklich entfernen?')) return; ev.currentTarget.disabled = true; try { await api('/entities/' + encodeURIComponent(e.id), { method: 'DELETE' }); route(); } catch (x) { alert(x.message); } } }, 'Entfernen'))))) : empty('Du hast noch nichts eingereicht.'));
+    }
+    if (tab === 'favorites') { const fav = await api('/me/favorites'); box.append(fav.length ? h('div.grid', fav.map(card)) : empty('Noch keine Favoriten. Öffne einen Eintrag und klicke auf „Favorisieren“.')); }
+    if (tab === 'downloads') {
+      const dl = await api('/me/downloads');
+      box.append(h('div.bar', h('span.sm.muted', dl.length + ' Einträge – pro Inhalt und Tag wird ein Download gespeichert.'), dl.length ? h('button.btn.sm.ghost', { onclick: async () => { if (!confirm('Download-Verlauf löschen?')) return; await api('/me/downloads', { method: 'DELETE' }); route(); } }, 'Verlauf löschen') : null));
+      box.append(dl.length ? h('div.list', dl.map((e) => h('a.li', { href: '#/item/' + encodeURIComponent(e.id) }, h('div', h('div.lt', e.title), h('div.ld', (e.data.type || e.kind) + ' · über ' + (e.source === 'client' ? 'Polaris Client' : 'Community Hub'))), h('span.lm', fmtDate(e.downloadedAt))))) : empty('Noch keine Downloads.'));
+    }
+    if (tab === 'security') {
+      const pw = { cur: '', next: '', rep: '' }; const msg = h('div');
+      box.append(h('form.box.narrow', { onsubmit: async (ev) => { ev.preventDefault(); msg.replaceChildren(); if (pw.next !== pw.rep) return msg.replaceChildren(h('p.err', 'Die neuen Passwörter stimmen nicht überein.')); try { await api('/me', { method: 'PUT', body: { currentPassword: pw.cur, newPassword: pw.next } }); ev.target.reset(); msg.replaceChildren(h('p.okm', 'Passwort geändert. Andere Geräte wurden abgemeldet.')); } catch (e) { msg.replaceChildren(h('p.err', e.message)); } } },
+        h('h3', 'Passwort ändern'),
+        h('label.fld', h('span', 'Aktuelles Passwort'), h('input.inp', { type: 'password', autocomplete: 'current-password', required: true, oninput: (e) => { pw.cur = e.target.value; } })),
+        h('label.fld', h('span', 'Neues Passwort (mind. 8 Zeichen)'), h('input.inp', { type: 'password', autocomplete: 'new-password', minlength: 8, required: true, oninput: (e) => { pw.next = e.target.value; } })),
+        h('label.fld', h('span', 'Neues Passwort wiederholen'), h('input.inp', { type: 'password', autocomplete: 'new-password', minlength: 8, required: true, oninput: (e) => { pw.rep = e.target.value; } })),
+        msg, h('button.btn.pri', { type: 'submit' }, 'Passwort ändern')));
+      const sessions = await api('/me/sessions');
+      box.append(h('section.box.narrow', { style: { marginTop: '16px' } }, h('h3', 'Angemeldete Geräte'), h('div.list', sessions.map((x) => h('div.li', h('div', h('div.lt', x.device + (x.current ? ' (dieses Gerät)' : '')), h('div.ld', 'zuletzt aktiv ' + fmtDate(x.last_seen))),
+        x.current ? null : h('button.btn.sm.ghost.lm', { onclick: async () => { await api('/me/sessions/' + encodeURIComponent(x.id), { method: 'DELETE' }); route(); } }, 'Abmelden'))))));
+      box.append(h('section.box.narrow', { style: { marginTop: '16px' } }, h('h3', 'Meine Daten'), h('p.sm.muted', 'Exportiere alle über dich gespeicherten Daten als JSON oder lösche dein Konto dauerhaft.'),
+        h('div.bar', h('button.btn.sm', { onclick: async () => { const d = await api('/me/export'); download('polaris-konto-export.json', JSON.stringify(d, null, 2)); } }, 'Daten exportieren'),
+          h('button.btn.sm.ghost.danger', { onclick: async () => { const p = prompt('Konto endgültig löschen? Zur Bestätigung Passwort eingeben:'); if (!p) return; try { await api('/me', { method: 'DELETE', body: { password: p } }); setSession(null); location.hash = '#/'; } catch (e) { alert(e.message); } } }, 'Konto löschen'))));
+    }
+  } catch (e) { box.append(h('p.err', e.message)); }
+};
+
+// ---------- submit (uploads are validated here and again on the server) ----------
+const MAX_IMG = 2 * 1024 * 1024;
+function readImage(file) {
+  return new Promise((res, rej) => {
+    if (!file) return rej(new Error('Keine Datei gewählt'));
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) return rej(new Error('Nur PNG, JPG oder WebP erlaubt'));
+    if (file.size > MAX_IMG) return rej(new Error('Datei ist größer als 2 MB'));
+    const r = new FileReader(); r.onerror = () => rej(new Error('Datei konnte nicht gelesen werden'));
+    r.onload = () => { const img = new Image(); img.onload = () => res({ dataUrl: r.result, w: img.naturalWidth, h: img.naturalHeight }); img.onerror = () => rej(new Error('Kein gültiges Bild')); img.src = r.result; };
+    r.readAsDataURL(file);
+  });
+}
+P.submit = (root) => {
+  root.append(pageHead('Inhalt einreichen', 'Skins, Fadenkreuze, Themes und HUD-Layouts teilen. Jede Einreichung wird vor der Veröffentlichung von der Moderation geprüft.'));
+  if (needLogin(root, 'Das Einreichen')) return;
+  const f = { type: 'skin', title: '', description: '', tags: '', license: 'CC BY 4.0', image: null, xh: { shape: 'cross-dot', color: '#5aa9e6', size: 8, thickness: 2, gap: 4, outline: true, outlineColor: '#000000', outlineWidth: 1, opacity: 1 },
+    theme: { bg: '#111316', panel: '#16191d', panel2: '#1c2026', border: '#262b33', text: '#d9dde3', muted: '#8a929e', accent: '#5aa9e6', ok: '#5cb87a', warn: '#d9a23f', danger: '#d9534f' }, json: '' };
+  const msg = h('div'); const specific = h('div'); const preview = h('div.pv');
+  const typeSel = h('select.inp', { onchange: (e) => { f.type = e.target.value; drawSpecific(); } }, [['skin', 'Skin (PNG 64×64 oder 128×128)'], ['crosshair', 'Fadenkreuz'], ['theme', 'Theme'], ['hud', 'HUD-Layout (JSON)'], ['background', 'Hintergrund (Bild)']].map(([v, l]) => h('option', { value: v }, l)));
+  function drawSpecific() {
+    specific.replaceChildren(); preview.replaceChildren();
+    if (f.type === 'skin' || f.type === 'background') {
+      const info = h('p.sm.muted', f.type === 'skin' ? 'Quadratisches PNG mit 64×64 oder 128×128 Pixeln, max. 2 MB.' : 'PNG, JPG oder WebP, max. 2 MB.');
+      specific.append(h('label.fld', h('span', 'Datei'), h('input.inp', { type: 'file', accept: f.type === 'skin' ? 'image/png' : 'image/png,image/jpeg,image/webp', onchange: async (e) => {
+        msg.replaceChildren(); f.image = null; preview.replaceChildren();
+        try { const im = await readImage(e.target.files[0]); if (f.type === 'skin' && !((im.w === 64 && im.h === 64) || (im.w === 128 && im.h === 128))) throw new Error('Skin muss 64×64 oder 128×128 Pixel groß sein (ist ' + im.w + '×' + im.h + ')');
+          f.image = im.dataUrl; preview.append(h('img', { src: im.dataUrl, alt: 'Vorschau', class: f.type === 'skin' ? 'pix' : null }), h('span.sm.muted', im.w + '×' + im.h + ' px')); } catch (x) { e.target.value = ''; msg.replaceChildren(h('p.err', x.message)); } } })), info);
+    }
+    if (f.type === 'crosshair') {
+      const upd = () => preview.replaceChildren(h('div.xh.big', { html: crosshairSvg(f.xh) }));
+      const num = (k, l, min, max) => h('label.fld', h('span', l + ' (' + min + '–' + max + ')'), h('input.inp', { type: 'number', min, max, value: f.xh[k], oninput: (e) => { f.xh[k] = Math.min(max, Math.max(min, Number(e.target.value) || 0)); upd(); } }));
+      specific.append(h('div.g2', h('label.fld', h('span', 'Form'), h('select.inp', { onchange: (e) => { f.xh.shape = e.target.value; upd(); } }, ['cross', 'cross-dot', 't', 'dot', 'circle', 'circle-dot'].map((x) => h('option', { value: x, selected: x === f.xh.shape ? true : null }, x)))),
+        h('label.fld', h('span', 'Farbe'), h('input.inp', { type: 'color', value: f.xh.color, oninput: (e) => { f.xh.color = e.target.value; upd(); } })),
+        num('size', 'Länge', 1, 40), num('thickness', 'Stärke', 1, 12), num('gap', 'Abstand', 0, 40), num('outlineWidth', 'Rand', 0, 6),
+        h('label.fld', h('span', 'Randfarbe'), h('input.inp', { type: 'color', value: f.xh.outlineColor, oninput: (e) => { f.xh.outlineColor = e.target.value; upd(); } })),
+        h('label.fld.chk', h('input', { type: 'checkbox', checked: true, onchange: (e) => { f.xh.outline = e.target.checked; upd(); } }), h('span', 'Rand anzeigen'))));
+      upd();
+    }
+    if (f.type === 'theme') {
+      const upd = () => preview.replaceChildren(themeSwatch(f.theme));
+      specific.append(h('div.g2', Object.keys(f.theme).map((k) => h('label.fld', h('span', k), h('input.inp', { type: 'color', value: f.theme[k], oninput: (e) => { f.theme[k] = e.target.value; upd(); } })))));
+      upd();
+    }
+    if (f.type === 'hud') specific.append(h('label.fld', h('span', 'HUD-Layout als JSON (aus dem Client: HUD Editor → Exportieren)'), h('textarea.inp.mono', { rows: 8, oninput: (e) => { f.json = e.target.value; } })));
+  }
+  function payload() {
+    if (f.type === 'crosshair') return Object.assign({}, f.xh, { enabled: true });
+    if (f.type === 'theme') return { name: f.title.trim(), colors: Object.assign({}, f.theme) };
+    if (f.type === 'hud') { let j; try { j = JSON.parse(f.json); } catch (_) { throw new Error('HUD-Layout ist kein gültiges JSON'); } if (!j || typeof j !== 'object' || typeof (j.widgets || j.payload && j.payload.widgets) !== 'object') throw new Error('HUD-Layout braucht ein Objekt „widgets“'); return j.widgets ? { widgets: j.widgets } : j.payload; }
+    return undefined;
+  }
+  const form = h('form.box', { onsubmit: async (ev) => {
+    ev.preventDefault(); msg.replaceChildren(); const b = form.querySelector('button[type=submit]');
+    try {
+      if ((f.type === 'skin' || f.type === 'background') && !f.image) throw new Error('Bitte eine gültige Bilddatei wählen');
+      const data = { type: f.type, description: f.description.trim(), license: f.license, tags: f.tags.split(',').map((t) => t.trim()).filter(Boolean).slice(0, 8) };
+      const pl = payload(); if (pl) data.payload = pl;
+      if (f.image) data.preview = f.image;
+      b.disabled = true;
+      const r = await api('/entities', { method: 'POST', body: { kind: 'gallery', title: f.title.trim(), data } });
+      form.replaceChildren(h('p.okm', '„' + r.title + '“ wurde eingereicht (' + (STATUS_DE[r.status] || [r.status])[0] + ').'), h('div.bar', h('a.btn.pri', { href: '#/account/uploads' }, 'Meine Inhalte'), h('button.btn', { type: 'button', onclick: () => route() }, 'Weiteren Inhalt einreichen')));
+    } catch (e) { b.disabled = false; msg.replaceChildren(h('p.err', e.message)); }
+  } },
+  h('div.det', h('div',
+    h('label.fld', h('span', 'Art'), typeSel),
+    h('label.fld', h('span', 'Titel'), h('input.inp', { required: true, minlength: 2, maxlength: 120, oninput: (e) => { f.title = e.target.value; } })),
+    h('label.fld', h('span', 'Beschreibung'), h('textarea.inp', { rows: 3, maxlength: 2000, oninput: (e) => { f.description = e.target.value; } })),
+    h('div.g2', h('label.fld', h('span', 'Tags (mit Komma getrennt)'), h('input.inp', { maxlength: 200, oninput: (e) => { f.tags = e.target.value; } })),
+      h('label.fld', h('span', 'Lizenz'), h('select.inp', { onchange: (e) => { f.license = e.target.value; } }, ['CC BY 4.0', 'CC BY-SA 4.0', 'CC0', 'Alle Rechte vorbehalten'].map((x) => h('option', { value: x }, x))))),
+    specific),
+  h('aside', h('div.sm.muted', 'Vorschau'), preview, h('p.sm.muted', { style: { marginTop: '12px' } }, 'Nur eigene oder frei lizenzierte Inhalte. Keine Cheats oder Inhalte, die das Spiel manipulieren.'))),
+  msg, h('button.btn.pri', { type: 'submit' }, 'Zur Prüfung einreichen'));
+  root.append(form); drawSpecific();
+};
+
+// ---------- moderation (moderator/admin – every action is checked by the server) ----------
+P.mod = async (root, parts) => {
+  root.append(pageHead('Moderation', 'Einreichungen prüfen, Meldungen bearbeiten und – als Admin – Konten und Ankündigungen verwalten. Rollen vergibt ausschließlich der Owner.'));
+  if (needLogin(root, 'Die Moderation')) return;
+  if (!isStaff()) { root.append(h('p.err', 'Dein Konto hat keine Moderationsrechte.')); return; }
+  const admin = S.user.role === 'admin';
+  const tab = parts[1] || 'queue';
+  tabs(root, [['queue', 'Warteschlange'], ['reports', 'Meldungen']].concat(admin ? [['users', 'Nutzer'], ['announce', 'Ankündigung'], ['log', 'Protokoll']] : []), tab, '#/mod/');
+  const box = h('div', { style: { marginTop: '18px' } }); root.append(box);
+  const act = async (fn) => { try { await fn(); route(); } catch (e) { alert(e.message); } };
+  try {
+    if (tab === 'queue' || tab === 'reports') {
+      const q = await api('/mod/queue');
+      box.append(h('div.facts.row3', { style: { marginBottom: '18px' } }, h('div', h('span.muted', 'Offene Einreichungen'), h('b', String(q.stats.pending))), h('div', h('span.muted', 'Offene Meldungen'), h('b', String(q.stats.reports))), h('div', h('span.muted', 'Downloads gesamt'), h('b', String(q.stats.downloads)))));
+      if (tab === 'queue') box.append(q.pending.length ? h('div.list', q.pending.map((e) => h('div.li.mod', thumb(e), h('div', h('div.lt', e.title), h('div.ld', (e.data.type || e.kind) + ' · von ' + (e.author ? e.author.username : 'Gast') + ' · ' + fmtDate(e.createdAt)), e.data.description ? h('div.ld', String(e.data.description).slice(0, 200)) : null),
+        h('span.lm', h('button.btn.sm.pri', { onclick: () => act(() => api('/mod/entities/' + encodeURIComponent(e.id), { method: 'PUT', body: { status: 'published' } })) }, 'Freigeben'),
+          h('button.btn.sm.ghost', { style: { marginLeft: '6px' }, onclick: () => { const reason = prompt('Begründung für die Ablehnung (wird dem Creator angezeigt):'); if (reason === null) return; act(() => api('/mod/entities/' + encodeURIComponent(e.id), { method: 'PUT', body: { status: 'rejected', reason } })); } }, 'Ablehnen'))))) : empty('Keine offenen Einreichungen.'));
+      if (tab === 'reports') box.append(q.reports.length ? h('div.list', q.reports.map((r) => h('div.li', h('div', h('div.lt', r.target_type + ' · ' + r.target_id), h('div.ld', r.reason), h('div.ld', fmtDate(r.created_at))),
+        h('span.lm', h('button.btn.sm', { onclick: () => act(() => api('/mod/reports/' + encodeURIComponent(r.id), { method: 'PUT', body: { status: 'resolved', removeTarget: true, resolution: 'Inhalt entfernt' } })) }, 'Inhalt entfernen'),
+          h('button.btn.sm.ghost', { style: { marginLeft: '6px' }, onclick: () => act(() => api('/mod/reports/' + encodeURIComponent(r.id), { method: 'PUT', body: { status: 'rejected', resolution: 'Kein Verstoß' } })) }, 'Kein Verstoß'))))) : empty('Keine offenen Meldungen.'));
+    }
+    if (tab === 'users' && admin) {
+      let q = ''; const list = h('div');
+      const load = async () => { const us = await api('/mod/users?q=' + encodeURIComponent(q)); list.replaceChildren(us.length ? h('table.tbl', h('thead', h('tr', h('th', 'Nutzer'), h('th', 'Rolle'), h('th', 'Status'), h('th', 'Inhalte'), h('th', ''))), h('tbody', us.map((u) => h('tr', h('td', h('b', u.username), h('div.sm.muted', 'seit ' + fmtDate(u.created_at))),
+        h('td', u.role === 'admin' ? 'admin' : h('select.inp.sm', { 'aria-label': 'Rolle von ' + u.username, onchange: (e) => act(() => api('/mod/users/' + encodeURIComponent(u.id), { method: 'PUT', body: { role: e.target.value } })) }, ['user', 'creator', 'moderator'].map((r) => h('option', { value: r, selected: r === u.role ? true : null }, r)))),
+        h('td', stTag(u.status === 'active' ? 'published' : 'removed')), h('td', String(u.uploads)),
+        h('td', u.role === 'admin' || u.id === S.user.id ? null : h('button.btn.sm.ghost', { onclick: () => act(() => api('/mod/users/' + encodeURIComponent(u.id), { method: 'PUT', body: { status: u.status === 'active' ? 'suspended' : 'active' } })) }, u.status === 'active' ? 'Sperren' : 'Entsperren')))))) : empty('Keine Nutzer gefunden.')); };
+      box.append(h('div.bar', h('input.inp', { type: 'search', placeholder: 'Nutzer suchen …', 'aria-label': 'Nutzer suchen', oninput: (e) => { q = e.target.value.trim(); clearTimeout(load.t); load.t = setTimeout(load, 250); } })), list);
+      await load();
+    }
+    if (tab === 'announce' && admin) {
+      const f = { title: '', body: '', level: 'info', kind: 'announcement' }; const msg = h('div');
+      box.append(h('form.box.narrow', { onsubmit: async (ev) => { ev.preventDefault(); try { await api('/mod/announcements', { method: 'POST', body: f }); msg.replaceChildren(h('p.okm', 'Veröffentlicht.')); ev.target.reset(); } catch (e) { msg.replaceChildren(h('p.err', e.message)); } } },
+        h('label.fld', h('span', 'Art'), h('select.inp', { onchange: (e) => { f.kind = e.target.value; } }, h('option', { value: 'announcement' }, 'Ankündigung (Banner)'), h('option', { value: 'news' }, 'News-Beitrag'))),
+        h('label.fld', h('span', 'Stufe'), h('select.inp', { onchange: (e) => { f.level = e.target.value; } }, [['info', 'Info'], ['ok', 'Erfolg'], ['warn', 'Wartung / Warnung'], ['danger', 'Störung']].map(([v, l]) => h('option', { value: v }, l)))),
+        h('label.fld', h('span', 'Titel'), h('input.inp', { required: true, minlength: 2, maxlength: 120, oninput: (e) => { f.title = e.target.value; } })),
+        h('label.fld', h('span', 'Text (Markdown)'), h('textarea.inp', { rows: 5, required: true, maxlength: 4000, oninput: (e) => { f.body = e.target.value; } })),
+        msg, h('button.btn.pri', { type: 'submit' }, 'Veröffentlichen')));
+    }
+    if (tab === 'log' && admin) {
+      const log = await api('/mod/audit');
+      box.append(log.length ? h('table.tbl', h('thead', h('tr', h('th', 'Zeit'), h('th', 'Wer'), h('th', 'Aktion'), h('th', 'Ziel'))), h('tbody', log.map((a) => h('tr', h('td.sm', new Date(a.created_at).toLocaleString('de-DE')), h('td', a.actor.replace(/^user:/, '')), h('td.mono', a.action), h('td.mono.sm', a.target || ''))))) : empty('Noch keine Moderationsaktionen.'));
+    }
+  } catch (e) { box.append(h('p.err', e.message)); }
+};
+
 // ---------- router ----------
 async function route() {
   const parts = (location.hash.replace(/^#\/?/, '') || '').split('/').filter(Boolean);
@@ -452,7 +708,7 @@ async function route() {
   main.replaceChildren(root);
   try {
     if (!P[id]) notFound(root);
-    else if (id !== 'home' && id !== 'item' && id !== 'p' && hidden(id)) root.append(pageHead('Nicht verfügbar', 'Diese Seite ist derzeit deaktiviert.'), h('a.btn', { href: '#/' }, 'Zur Startseite'));
+    else if (!['home', 'item', 'p', 'account', 'mod', 'u'].includes(id) && hidden(id)) root.append(pageHead('Nicht verfügbar', 'Diese Seite ist derzeit deaktiviert.'), h('a.btn', { href: '#/' }, 'Zur Startseite'));
     else await P[id](root, parts);
   } catch (e) { console.error(e); root.append(h('p.err', 'Diese Seite konnte nicht angezeigt werden: ' + e.message)); }
   window.scrollTo(0, 0);

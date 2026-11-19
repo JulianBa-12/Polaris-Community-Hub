@@ -14,7 +14,7 @@ function staticServer() {
   const s = http.createServer((q, r) => { const u = decodeURIComponent(q.url.split('?')[0]); const f = path.join(ROOT, u === '/' ? 'index.html' : u); if (!f.startsWith(ROOT) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { r.writeHead(404); r.end(); return; } r.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream' }); fs.createReadStream(f).pipe(r); });
   return new Promise((res) => s.listen(0, '127.0.0.1', () => res(s)));
 }
-const PAGES = ['', 'about', 'features', 'news', 'changelog', 'community', 'skins', 'resources', 'plugins', 'docs', 'guides', 'support', 'bugs', 'suggestions', 'contact', 'downloads', 'p/about'];
+const PAGES = ['', 'about', 'features', 'news', 'changelog', 'community', 'skins', 'themes', 'crosshairs', 'leaderboard', 'submit', 'account', 'resources', 'plugins', 'docs', 'guides', 'support', 'bugs', 'suggestions', 'contact', 'downloads', 'p/about'];
 
 (async () => {
   const srv = HUB() ? null : await staticServer();
@@ -48,12 +48,15 @@ const PAGES = ['', 'about', 'features', 'news', 'changelog', 'community', 'skins
   ok(dl && /\.plugin\.json$/.test(dl.suggestedFilename()), 'Plugin-Download als Datei');
   ok(/öffentlichen Polaris-Backend/.test(await pg.locator('aside').innerText()), 'Ohne Backend: ehrlicher Hinweis statt Bewertung');
   await pg.goto(base + '#/bugs'); ok(/erreichbares Polaris-Backend/.test(await pg.locator('main').innerText()), 'Bug Reports ohne Backend: Hinweis');
+  await pg.goto(base + '#/crosshairs'); ok(await pg.locator('.grid .card .xh svg').count() >= 1, 'Crosshairs-Seite mit Vorschau');
+  await pg.goto(base + '#/leaderboard'); ok(/öffentlichen Polaris-Backend/.test(await pg.locator('main').innerText()), 'Leaderboard ohne Backend: ehrlicher Hinweis');
+  await pg.goto(base + '#/submit'); ok(/öffentlichen Polaris-Backend/.test(await pg.locator('main').innerText()), 'Einreichen ohne Backend: Hinweis');
   await pg.goto(base + '#/gibtsnicht'); ok(/Nicht gefunden/.test(await pg.locator('main h1').innerText()), '404-Seite');
   await pg.goto(base + '#/downloads'); ok(/chmod \+x/.test(await pg.locator('main').innerText()), 'Downloads mit Installationshinweis');
 
   const m = await browser.newContext({ viewport: { width: 375, height: 760 }, isMobile: true, hasTouch: true });
   const mp = await newPage(m);
-  for (const p of ['', 'docs', 'skins', 'bugs', 'downloads']) {
+  for (const p of ['', 'docs', 'skins', 'themes', 'crosshairs', 'leaderboard', 'bugs', 'downloads']) {
     await mp.goto(base + '#/' + p); await mp.waitForSelector('html[data-ready="1"]'); await mp.waitForTimeout(150);
     const ov = await mp.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     ok(ov <= 0, 'Mobil ohne horizontales Scrollen: #/' + p, 'overflow ' + ov + 'px');
@@ -99,8 +102,59 @@ const PAGES = ['', 'about', 'features', 'news', 'changelog', 'community', 'skins
     await lp.fill('aside textarea', 'Sehr sauberes Fadenkreuz.'); await lp.getByText('Kommentieren', { exact: true }).click(); await lp.waitForSelector('.cmt', { timeout: 8000 }).catch(() => {});
     ok(/sauberes Fadenkreuz/.test(await lp.locator('aside').innerText()), 'Kommentar erscheint', (await lp.locator('aside').innerText()).slice(-300));
     await lp.screenshot({ path: path.join(SHOTS, 'live-item.png'), fullPage: true });
+    // download is recorded and appears in the history
+    await lp.goto(base + '#/crosshairs'); await lp.locator('.grid .card').first().click(); await lp.waitForSelector('aside');
+    const [xdl] = await Promise.all([lp.waitForEvent('download', { timeout: 5000 }).catch(() => null), lp.getByText('Als Datei herunterladen').click()]);
+    ok(xdl && /\.polaris\.json$/.test(xdl.suggestedFilename()), 'Crosshair-Download als Datei');
+    await lp.waitForTimeout(400); ok(be.db.all('SELECT * FROM downloads').length === 1, 'Download im Backend gezählt');
+    await lp.goto(base + '#/account/downloads'); await lp.waitForSelector('.list .li', { timeout: 8000 }).catch(() => {});
+    ok(/Classic Crosshair/.test(await lp.locator('main').innerText()), 'Download-Verlauf im Konto');
+    await lp.goto(base + '#/account/favorites'); await lp.waitForSelector('.grid .card', { timeout: 8000 }).catch(() => {});
+    ok(await lp.locator('.grid .card').count() === 1, 'Favoriten im Konto');
+    // profile edit
+    await lp.goto(base + '#/account/profile'); await lp.waitForSelector('form textarea');
+    await lp.fill('form input >> nth=1', 'Hub Tester'); await lp.fill('form textarea', 'Ich teste den Hub.'); await lp.click('form button[type=submit]'); await lp.waitForSelector('.okm', { timeout: 8000 }).catch(() => {});
+    ok(be.db.get("SELECT display_name, bio FROM users WHERE username='hubtester'").bio === 'Ich teste den Hub.', 'Profil gespeichert');
+    // submit a crosshair (validated) and a skin with wrong size (rejected client-side)
+    await lp.goto(base + '#/submit'); await lp.waitForSelector('form select');
+    await lp.selectOption('form select >> nth=0', 'skin');
+    const bigPng = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAEUlEQVR42mP8z8DwnwEJMMIAAPgRA/2Wr+CDAAAAAElFTkSuQmCC', 'base64');
+    await lp.setInputFiles('form input[type=file]', { name: 'tiny.png', mimeType: 'image/png', buffer: bigPng }); await lp.waitForTimeout(300);
+    ok(/64×64 oder 128×128/.test(await lp.locator('main').innerText()), 'Skin mit falscher Größe wird abgelehnt');
+    await lp.selectOption('form select >> nth=0', 'crosshair');
+    await lp.fill('form input >> nth=0', 'Hub Kreuz'); await lp.fill('form textarea >> nth=0', 'Über den Hub eingereicht');
+    ok(await lp.locator('.pv svg').count() === 1, 'Live-Vorschau beim Einreichen');
+    await lp.click('form button[type=submit]'); await lp.waitForSelector('.okm', { timeout: 8000 }).catch(() => {});
+    const sub = be.db.get("SELECT * FROM entities WHERE title='Hub Kreuz'");
+    ok(sub && sub.status === 'pending' && JSON.parse(sub.data).payload.shape === 'cross-dot', 'Einreichung gespeichert (in Prüfung)');
+    ok(!(await lp.locator('#acct a', { hasText: 'Moderation' }).count()), 'Normale Nutzer sehen keine Moderation');
+    await lp.goto(base + '#/mod'); ok(/keine Moderationsrechte/.test(await lp.locator('main').innerText()), 'Moderation für normale Nutzer gesperrt');
+    // the Owner grants admin (simulated directly in the DB here; real path: signed Owner API) → staff panel works
+    be.db.run("UPDATE users SET role = 'admin' WHERE username = 'hubtester'");
     await lp.reload(); await lp.waitForSelector('html[data-ready="1"]');
-    ok(/hubtester/.test(await lp.locator('#acct').innerText()), 'Sitzung bleibt nach Neuladen (kein erneuter Login)');
+    ok(await lp.locator('#acct a', { hasText: 'Moderation' }).count() === 1, 'Admin sieht Moderation');
+    await lp.goto(base + '#/mod/queue'); await lp.waitForSelector('.li.mod', { timeout: 8000 }).catch(() => {});
+    ok(/Hub Kreuz/.test(await lp.locator('main').innerText()), 'Einreichung in der Warteschlange');
+    await lp.getByText('Freigeben').first().click(); await lp.waitForTimeout(600);
+    ok(be.db.get("SELECT status FROM entities WHERE title='Hub Kreuz'").status === 'published', 'Freigabe durch Moderation');
+    await lp.goto(base + '#/mod/announce'); await lp.waitForSelector('form');
+    await lp.fill('form input >> nth=0', 'Wartung Samstag'); await lp.fill('form textarea', 'Kurze Wartung.'); await lp.click('form button[type=submit]'); await lp.waitForSelector('.okm', { timeout: 8000 }).catch(() => {});
+    ok(!!be.db.get("SELECT id FROM entities WHERE kind='announcement' AND title='Wartung Samstag'"), 'Ankündigung veröffentlicht');
+    await lp.goto(base + '#/mod/log'); await lp.waitForSelector('table', { timeout: 8000 }).catch(() => {});
+    ok(/mod\.entity\.published/.test(await lp.locator('main').innerText()), 'Moderationsprotokoll');
+    await lp.goto(base + '#/leaderboard'); await lp.waitForSelector('table', { timeout: 8000 }).catch(() => {});
+    ok(/Hub Tester/.test(await lp.locator('main').innerText()), 'Leaderboard listet Creator (live)');
+    await lp.screenshot({ path: path.join(SHOTS, 'live-leaderboard.png'), fullPage: true });
+    await lp.goto(base + '#/u/hubtester'); await lp.waitForSelector('main h1');
+    ok(/Hub Tester/.test(await lp.locator('main h1').innerText()) && /Hub Kreuz/.test(await lp.locator('main').innerText()), 'Öffentliches Profil mit Inhalten');
+    // password change
+    await lp.goto(base + '#/account/security'); await lp.waitForSelector('form');
+    await lp.fill('form input >> nth=0', 'geheim123!'); await lp.fill('form input >> nth=1', 'neuesPass456'); await lp.fill('form input >> nth=2', 'neuesPass456'); await lp.click('form button[type=submit]');
+    await lp.waitForSelector('.okm', { timeout: 8000 }).catch(() => {});
+    const loginNew = await fetch(local + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'hubtester', password: 'neuesPass456' }) });
+    ok(loginNew.status === 200, 'Passwort geändert');
+    await lp.reload(); await lp.waitForSelector('html[data-ready="1"]');
+    ok(/Hub Tester|hubtester/.test(await lp.locator('#acct').innerText()), 'Sitzung bleibt nach Neuladen (kein erneuter Login)');
     await lp.click('#acct button'); await lp.waitForTimeout(300);
     ok(/Anmelden/.test(await lp.locator('#acct').innerText()), 'Abmelden');
     await be.close();
